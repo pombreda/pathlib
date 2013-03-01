@@ -851,25 +851,57 @@ class PurePath(object):
         return parts[-1]
 
     @property
-    def ext(self):
-        """The final component's extension, if any."""
+    def suffix(self):
+        """The final component's last suffix, if any."""
         basename = self.name
-        if basename == '' or basename == '.':
+        if basename.endswith('.'):
             return ''
-        i = basename.find('.')
+        basename = basename.lstrip('.')
+        i = basename.rfind('.')
         if i == -1:
             return ''
         return basename[i:]
 
-    def relative(self):
-        """Return a new path without any drive and root.
-        """
-        if self._drv or self._root:
-            return self._from_parsed_parts('', '', self._parts[1:])
-        else:
-            return self._from_parsed_parts('', '', self._parts)
+    @property
+    def suffixes(self):
+        """A list of the final component's suffixes, if any."""
+        basename = self.name
+        if basename.endswith('.'):
+            return []
+        basename = basename.lstrip('.')
+        return ['.' + suffix for suffix in basename.split('.')[1:]]
 
-    def relative_to(self, *other):
+    @property
+    def basename(self):
+        """The final path component, minus its last suffix."""
+        basename = self.name
+        suffix = self.suffix
+        if not suffix:
+            return basename
+        return basename[:-len(suffix)]
+
+    def with_name(self, name):
+        """Return a new path with the file name changed."""
+        if not self.name:
+            raise ValueError("%r has an empty name" % (self,))
+        return self._from_parsed_parts(self._drv, self._root,
+                                       self._parts[:-1] + [name])
+
+    def with_suffix(self, suffix):
+        """Return a new path with the file suffix changed (or added, if none)."""
+        # XXX if suffix is None, should the current suffix be removed?
+        name = self.name
+        if not name:
+            raise ValueError("%r has an empty name" % (self,))
+        old_suffix = self.suffix
+        if not old_suffix:
+            name = name + suffix
+        else:
+            name = name[:-len(old_suffix)] + suffix
+        return self._from_parsed_parts(self._drv, self._root,
+                                       self._parts[:-1] + [name])
+
+    def relative(self, *other):
         """Return the relative path to another path identified by the passed
         arguments.  If the operation is not possible (because this is not
         a subpath of the other path), raise ValueError.
@@ -915,7 +947,7 @@ class PurePath(object):
             self._pparts = _PathParts(self)
             return self._pparts
 
-    def join(self, *args):
+    def joinpath(self, *args):
         """Combine this path with one or several arguments, and return a
         new path representing either a subpath (if all arguments are relative
         paths) or a totally different path (if one of the arguments is
@@ -923,11 +955,16 @@ class PurePath(object):
         """
         return self._make_child(args)
 
-    def __getitem__(self, key):
-        if isinstance(key, tuple):
-            return self._make_child(key)
-        else:
-            return self._make_child((key,))
+    def __truediv__(self, key):
+        return self._make_child((key,))
+
+    def __rtruediv__(self, key):
+        return self._from_parts([key] + self._parts)
+
+    if sys.version_info < (3,):
+        __div__ = __truediv__
+        __rdiv__ = __rtruediv__
+        del __truediv__, __rtruediv__
 
     def parent(self, level=1):
         """A parent or ancestor (if `level` is specified) of this path."""
